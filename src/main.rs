@@ -2,8 +2,47 @@ use binrw::{binrw, BinRead, BinReaderExt, BinWrite};
 use std::fs;
 use std::fs::File;
 use std::io::{Cursor};
+
 #[binrw]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
+enum CpuType {
+    #[brw(magic(7i32))]
+    X86,
+    #[brw(magic(16777223i32))]
+    X86_64,
+    #[brw(magic(12i32))]
+    Arm,
+    #[brw(magic(16777228i32))]
+    Arm64,
+    #[brw(magic(33554444i32))]
+    Arm64_32,
+    Unknown(i32),
+}
+
+#[binrw]
+#[derive(Debug, PartialEq, Eq)]
+enum CpuSubtype {
+    #[brw(magic(6i32))]
+    ArmV6,
+    #[brw(magic(9i32))]
+    ArmV7,
+    #[brw(magic(11i32))]
+    ArmV7S,
+    #[brw(magic(12i32))]
+    ArmV7K,
+    #[brw(magic(13i32))]
+    ArmV8,
+    #[brw(magic(0i32))]
+    Arm64All,
+    #[brw(magic(1i32))]
+    Arm64V8,
+    #[brw(magic(2i32))]
+    Arm64E,
+    Unknown(i32),
+}
+
+#[binrw]
+#[derive(Debug, PartialEq, Eq)]
 enum MachType {
     #[brw(magic(0xcafebabeu32))]
     FatMaGic,
@@ -21,7 +60,7 @@ enum MachType {
 }
 
 #[binrw]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 enum FileType {
     #[brw(magic(0x1u32))]
     MachObject,
@@ -48,8 +87,27 @@ enum FileType {
     Unknown(u32),
 }
 
-pub type CpuType = i32;
-pub type CpuSubtype = i32;
+#[binrw]
+#[derive(Debug, PartialEq, Eq)]
+enum CmdType {
+    #[brw(magic(0x00000001u32))]
+    LcSegment,
+    #[brw(magic(0x00000019u32))]
+    LcSegment64,
+    #[brw(magic(0x00000021u32))]
+    LcEncryptionInfo,
+    #[brw(magic(0x0000002cu32))]
+    LcEncryptionInfo64,
+    #[brw(magic(0x0000001du32))]
+    LcCodeSignature,
+}
+
+#[binrw]
+#[derive(Debug)]
+struct LoadCommand {
+    cmd: u32,
+    cmd_size: u32,
+}
 
 #[binrw]
 #[derive(Debug)]
@@ -62,16 +120,17 @@ pub struct MachHeader {
     n_cmds: u32,       //加载器中加载命令(Load commands)的数量
     size_of_cmds: u32, //加载器中加载命令的总字节大小
     flags: u32,        // 标志位，主要用来表示是否是64位的二进制文件，是否是可执行文件等
-    #[br(if(magic == MachType::MachoMagic64 || magic == MachType::MachoCiGam64))]
-    #[bw(if(*magic == MachType::MachoMagic64 || *magic == MachType::MachoCiGam64))]
+    #[br(if (magic == MachType::MachoMagic64 || magic == MachType::MachoCiGam64))]
+    #[bw(if (* magic == MachType::MachoMagic64 || * magic == MachType::MachoCiGam64))]
     reserved: u32, // 64 位的保留字段
 }
+
 
 fn main() {
     let data = fs::read("./data/ios").unwrap();
     let mut reader = Cursor::new(&data);
     let mut macho: MachHeader = reader.read_ne().unwrap();
-    macho.cpu_type = 2;
+    // macho.cpu_type = CpuType::ARM;
 
     let mut writer = Cursor::new(vec![]);
     macho.write_le(&mut writer).unwrap();
