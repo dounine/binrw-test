@@ -1,8 +1,7 @@
-use binrw::{binrw, BinRead, BinReaderExt, BinResult, BinWrite, BinWriterExt};
+use binrw::{binrw, BinRead, BinReaderExt, BinWrite};
 use std::fs;
 use std::fs::File;
-use std::io::{Cursor, Read, Seek, SeekFrom};
-use std::ptr::read;
+use std::io::{Cursor};
 #[binrw]
 #[derive(Debug, PartialEq)]
 enum MachType {
