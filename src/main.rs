@@ -1,7 +1,7 @@
 use binrw::{binrw, BinRead, BinReaderExt, BinWrite};
 use std::fs;
 use std::fs::File;
-use std::io::{Cursor};
+use std::io::Cursor;
 
 #[binrw]
 #[derive(Debug, PartialEq, Eq)]
@@ -123,8 +123,10 @@ pub struct MachHeader {
     #[br(if (magic == MachType::MachoMagic64 || magic == MachType::MachoCiGam64))]
     #[bw(if (* magic == MachType::MachoMagic64 || * magic == MachType::MachoCiGam64))]
     reserved: u32, // 64 位的保留字段
-}
 
+    #[br(count = n_cmds)]
+    commands: Vec<LoadCommand>,
+}
 
 fn main() {
     let data = fs::read("./data/ios").unwrap();
