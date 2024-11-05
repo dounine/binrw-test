@@ -226,6 +226,17 @@ enum LoadCommand {
         #[bw(write_with = writer_cstring,args((cmd_size-str_offset) as usize,))]
         path: String,
     },
+    #[brw(magic = 0x0000000c_u32)]
+    LoadDylib {
+        cmd_size: u32,
+        str_offset: u32,
+        time_stamp: u32,
+        current_version: u32,
+        compatibility_version: u32,
+        #[br(parse_with = parse_cstring, args((cmd_size-str_offset) as usize,))]
+        #[bw(write_with = writer_cstring,args((cmd_size-str_offset) as usize,))]
+        name: String,
+    },
     #[brw(magic = 0x0000000b_u32)]
     DySymTab {
         cmd_size: u32,
