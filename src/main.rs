@@ -5,6 +5,7 @@ use std::ffi::{c_char, CStr};
 use std::fs;
 use std::fs::File;
 use std::io::{BufReader, Cursor, Read, SeekFrom};
+use std::mem::size_of;
 use std::ops::Neg;
 
 #[binrw]
@@ -132,8 +133,8 @@ enum LoadCommand {
     #[brw(magic = 0x00000001_u32)]
     Segment {
         cmd_size: u32,
-        #[br(parse_with = parse_cstring)]
-        #[bw(ignore)]
+        #[br(map = |v:[u8;16]| map_cstring(&v))]
+        #[bw(map = |v:&String| map_cstring_bytes(v))]
         segment_name: String,
         vm_addr: u32,
         vm_size: u32,
@@ -152,8 +153,8 @@ enum LoadCommand {
     #[brw(magic = 0x00000019_u32)]
     Segment64 {
         cmd_size: u32,
-        #[br(parse_with = parse_cstring)]
-        #[bw(ignore)]
+        #[br(parse_with = parse_cstring, args(16,))]
+        #[bw(write_with = writer_cstring,args(16,))]
         segment_name: String,
         vm_addr: u64,
         vm_size: u64,
@@ -206,12 +207,29 @@ struct CommandInfo {
     data: Vec<u8>,
 }
 #[binrw::parser(reader)]
-fn parse_cstring() -> BinResult<String> {
-    let mut buffer = [0u8; 16];
+fn parse_cstring(size: usize) -> BinResult<String> {
+    let mut buffer = vec![0u8; size];
     reader.read_exact(&mut buffer)?;
     let c_char = buffer.as_ptr() as *const c_char;
     let c_str = unsafe { CStr::from_ptr(c_char) };
     Ok(c_str.to_string_lossy().to_string())
+}
+#[binrw::writer(writer)]
+fn writer_cstring(data: &String, size: usize) -> BinResult<()> {
+    let mut data = data.as_bytes().to_vec();
+    data.resize(size, 0u8);
+    data.write(writer)?;
+    Ok(())
+}
+fn map_cstring(data: &[u8; 16]) -> String {
+    let c_char = data.as_ptr() as *const c_char;
+    let c_str = unsafe { CStr::from_ptr(c_char) };
+    c_str.to_string_lossy().to_string()
+}
+fn map_cstring_bytes(str: &String) -> Vec<u8> {
+    let mut data = str.as_bytes().to_vec();
+    data.resize(16, 0u8);
+    data
 }
 #[binrw]
 #[derive(Debug)]
@@ -316,11 +334,11 @@ fn main() {
     let mut macho: MachHeader = reader.read_ne().unwrap();
     // macho.cpu_type = CpuType::ARM;
 
-    // let mut writer = Cursor::new(vec![]);
-    // macho.write_le(&mut writer).unwrap();
-    // let mut file = File::create("./data/ios2").unwrap();
-    // writer.set_position(0);
-    // std::io::copy(&mut writer, &mut file).unwrap();
+    let mut writer = Cursor::new(vec![]);
+    macho.write_le(&mut writer).unwrap();
+    let mut file = File::create("./data/ios2").unwrap();
+    writer.set_position(0);
+    std::io::copy(&mut writer, &mut file).unwrap();
     //
     // let data = fs::read("./data/ios2").unwrap();
     // let mut reader = Cursor::new(&data);
