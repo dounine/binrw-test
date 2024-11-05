@@ -1,7 +1,10 @@
-use binrw::{binrw, BinRead, BinReaderExt, BinResult, BinWrite, NullString};
+use binrw::helpers::until_eof;
+use binrw::{args, binrw, BinRead, BinReaderExt, BinResult, BinWrite, Endian, NullString};
+use std::any::Any;
+use std::ffi::{c_char, CStr};
 use std::fs;
 use std::fs::File;
-use std::io::{Cursor, Read, SeekFrom};
+use std::io::{BufReader, Cursor, Read, SeekFrom};
 use std::ops::Neg;
 
 #[binrw]
@@ -106,41 +109,22 @@ enum CmdType {
     Unknown(u32),
 }
 #[binrw]
+#[brw(import{is_u64:bool=true})]
 #[derive(Debug)]
 struct Section<T: for<'a> BinRead<Args<'a> = ()> + for<'a> BinWrite<Args<'a> = ()>> {
-    section_name: [u8; 16], /* name of this section */
-    segment_name: [u8; 16], /* segment this section goes in */
-    addr: T,                /* memory address of this section */
-    size: T,                /* size in bytes of this section */
-    offset: u32,            /* file offset of this section */
-    align: u32,             /* section alignment (power of 2) */
-    rel_offset: u32,        /* file offset of relocation entries */
-    nreloc: u32,            /* number of relocation entries */
-    flags: u32,             /* flags (section type and attributes)*/
-    reserved1: u32,         /* reserved */
-    reserved2: u32,         /* reserved */
+    section_name: [u8; 16],
+    segment_name: [u8; 16],
+    addr: T,
+    size: T,
+    offset: u32,
+    align: u32,
+    rel_offset: u32,
+    nreloc: u32,
+    flags: u32,
+    reserved1: u32,
+    reserved2: u32,
+    #[br(if(is_u64))]
     reserved3: Option<u32>,
-}
-#[binrw]
-#[derive(Debug)]
-#[brw(little)]
-struct Data {
-    version: u16,
-    #[br(temp)]
-    #[bw(calc = items.len().try_into().unwrap())]
-    num_items: u32,
-    #[br(args{ count: 10, inner: (true,) })]
-    items: Vec<Item>,
-}
-
-#[binrw]
-#[derive(Debug)]
-#[brw(little)]
-#[br(import(version: bool))]
-struct Item {
-    field1: u32,
-    #[br(if(version, 0))]
-    field2: u64,
 }
 #[binrw]
 #[derive(Debug)]
@@ -148,24 +132,29 @@ enum LoadCommand {
     #[brw(magic = 0x00000001_u32)]
     Segment {
         cmd_size: u32,
-        segment_name: [u8; 16], /* segment name */
-        vm_addr: u32,           /* memory address of this segment */
-        vm_size: u32,           /* memory size of this segment */
-        file_offset: u32,       /* file offset of this segment */
-        file_size: u32,         /* amount to map from the file */
-        max_prot: i32,          /* maximum VM protection */
-        init_prot: i32,         /* initial VM protection */
+        #[br(parse_with = parse_cstring)]
+        #[bw(ignore)]
+        segment_name: String,
+        vm_addr: u32,
+        vm_size: u32,
+        file_offset: u32,
+        file_size: u32,
+        max_prot: i32,
+        init_prot: i32,
         #[br(temp)]
-        #[bw(calc = sections.len().try_into().unwrap())]
-        nsects: u32, /* number of sections in segment */
-        flags: u32,             /* flags */
+        #[bw(calc = sections.len() as u32)]
+        nsects: u32,
+        flags: u32,
         #[br(count = nsects)]
+        #[br(args{inner:args!{is_u64:false}})]
         sections: Vec<Section<u32>>,
     },
     #[brw(magic = 0x00000019_u32)]
     Segment64 {
         cmd_size: u32,
-        segment_name: [u8; 16],
+        #[br(parse_with = parse_cstring)]
+        #[bw(ignore)]
+        segment_name: String,
         vm_addr: u64,
         vm_size: u64,
         file_offset: u64,
@@ -173,10 +162,11 @@ enum LoadCommand {
         max_prot: i32,
         init_prot: i32,
         #[br(temp)]
-        #[bw(calc = sections.len().try_into().unwrap())]
+        #[bw(calc = sections.len() as u32)]
         nsects: u32,
         flags: u32,
         #[br(count = nsects)]
+        #[br(args{inner:args!{is_u64:true}})]
         sections: Vec<Section<u64>>,
     },
     #[brw(magic = 0x00000021_u32)]
@@ -215,7 +205,14 @@ struct CommandInfo {
     #[br(count = cmd_size )]
     data: Vec<u8>,
 }
-
+#[binrw::parser(reader)]
+fn parse_cstring() -> BinResult<String> {
+    let mut buffer = [0u8; 16];
+    reader.read_exact(&mut buffer)?;
+    let c_char = buffer.as_ptr() as *const c_char;
+    let c_str = unsafe { CStr::from_ptr(c_char) };
+    Ok(c_str.to_string_lossy().to_string())
+}
 #[binrw]
 #[derive(Debug)]
 pub struct MachHeader {
@@ -236,8 +233,7 @@ pub struct MachHeader {
     #[br(is_big = big_endian )]
     size_of_cmds: u32, //加载器中加载命令的总字节大小
     flags: u32,              // 标志位，主要用来表示是否是64位的二进制文件，是否是可执行文件等
-    // #[brw(if(bit_64.clone()))]
-    #[br(try)]
+    #[brw(if(bit_64.clone()))]
     reserved: Option<u32>, // 64 位的保留字段
 
     #[br(count = count_of_cmds)]
@@ -320,15 +316,15 @@ fn main() {
     let mut macho: MachHeader = reader.read_ne().unwrap();
     // macho.cpu_type = CpuType::ARM;
 
-    let mut writer = Cursor::new(vec![]);
-    macho.write_le(&mut writer).unwrap();
-    let mut file = File::create("./data/ios2").unwrap();
-    writer.set_position(0);
-    std::io::copy(&mut writer, &mut file).unwrap();
-
-    let data = fs::read("./data/ios2").unwrap();
-    let mut reader = Cursor::new(&data);
-    let macho = MachHeader::read_ne(&mut reader).unwrap();
+    // let mut writer = Cursor::new(vec![]);
+    // macho.write_le(&mut writer).unwrap();
+    // let mut file = File::create("./data/ios2").unwrap();
+    // writer.set_position(0);
+    // std::io::copy(&mut writer, &mut file).unwrap();
+    //
+    // let data = fs::read("./data/ios2").unwrap();
+    // let mut reader = Cursor::new(&data);
+    // let macho = MachHeader::read_ne(&mut reader).unwrap();
     println!("2 {:?}", macho);
     // println!("{}",CPU_TYPE_X86_64);
     // println!("length {:?}", data.len());
