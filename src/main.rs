@@ -198,6 +198,18 @@ enum LoadCommand {
         export_info_offset: u32,
         export_info_size: u32,
     },
+    #[brw(magic = 0x00000026_u32)]
+    FunctionStarts {
+        cmd_size: u32,
+        file_offset: u32,
+        file_size: u32,
+    },
+    #[brw(magic = 0x00000029_u32)]
+    DataInCode {
+        cmd_size: u32,
+        file_offset: u32,
+        file_size: u32,
+    },
     #[brw(magic = 0x00000002_u32)]
     SymTab {
         cmd_size: u32,
@@ -205,6 +217,14 @@ enum LoadCommand {
         number_of_symbols: u32,
         string_table_offset: u32,
         string_table_size: u32,
+    },
+    #[brw(magic = 0x8000001c_u32)]
+    RPath {
+        cmd_size: u32,
+        str_offset: u32,
+        #[br(parse_with = parse_cstring, args((cmd_size-str_offset) as usize,))]
+        #[bw(write_with = writer_cstring,args((cmd_size-str_offset) as usize,))]
+        path: String,
     },
     #[brw(magic = 0x0000000b_u32)]
     DySymTab {
@@ -227,6 +247,12 @@ enum LoadCommand {
         ext_reloc_table_entries: u32,
         loc_reloc_table_offset: u32,
         loc_reloc_table_entries: u32,
+    },
+    #[brw(magic = 0x80000028_u32)]
+    Main {
+        cmd_size: u32,
+        entry_offset: u64,
+        stacks_size: u64,
     },
     #[brw(magic = 0x0000001d_u32)]
     CodeSignature {
