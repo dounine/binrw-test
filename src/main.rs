@@ -110,7 +110,7 @@ enum CmdType {
     Unknown(u32),
 }
 #[binrw]
-#[brw(import{is_u64:bool=true})]
+#[brw(import(is_u64:bool))]
 #[derive(Debug)]
 struct Section<T: for<'a> BinRead<Args<'a> = ()> + for<'a> BinWrite<Args<'a> = ()>> {
     section_name: [u8; 16],
@@ -128,6 +128,7 @@ struct Section<T: for<'a> BinRead<Args<'a> = ()> + for<'a> BinWrite<Args<'a> = (
     reserved3: Option<u32>,
 }
 #[binrw]
+#[brw(is_big=big_endian,import(big_endian:bool))]
 #[derive(Debug)]
 enum LoadCommand {
     #[brw(magic = 0x00000001_u32)]
@@ -147,7 +148,7 @@ enum LoadCommand {
         nsects: u32,
         flags: u32,
         #[br(count = nsects)]
-        #[br(args{inner:args!{is_u64:false}})]
+        #[br(args{inner:(false,)})]
         sections: Vec<Section<u32>>,
     },
     #[brw(magic = 0x00000019_u32)]
@@ -167,7 +168,7 @@ enum LoadCommand {
         nsects: u32,
         flags: u32,
         #[br(count = nsects)]
-        #[br(args{inner:args!{is_u64:true}})]
+        #[br(args{inner:(true,)})]
         sections: Vec<Section<u64>>,
     },
     #[brw(magic = 0x00000021_u32)]
@@ -365,6 +366,7 @@ pub struct MachHeader {
     reserved: Option<u32>, // 64 位的保留字段
 
     #[br(count = count_of_cmds)]
+    #[br(args{inner:(big_endian,)})]
     commands: Vec<LoadCommand>,
 }
 
