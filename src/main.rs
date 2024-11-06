@@ -7,20 +7,19 @@ use std::fs::File;
 use std::io::{BufReader, Cursor, Read, SeekFrom};
 use std::mem::size_of;
 use std::ops::Neg;
-
 #[binrw]
-#[brw(is_big = big_endian,import{big_endian: bool})]
+// #[brw(is_big = big_endian,import{big_endian: bool})]
 #[derive(Debug, PartialEq, Eq)]
 enum CpuType {
-    #[brw(magic = 7_i32)]
+    #[brw(magic = 7_u32)]
     X86,
-    #[brw(magic = 16777223_i32)]
+    #[brw(magic = 16777223_u32)]
     X86_64,
-    #[brw(magic = 12_i32)]
+    #[brw(magic = 12_u32)]
     Arm,
-    #[brw(magic = 16777228_i32)]
+    #[brw(magic = 16777228_u32)]
     Arm64,
-    #[brw(magic = 33554444_i32)]
+    #[brw(magic = 33554444_u32)]
     Arm64_32,
     Unknown(i32),
 }
@@ -28,23 +27,23 @@ enum CpuType {
 #[binrw]
 #[derive(Debug, PartialEq, Eq)]
 enum CpuSubtype {
-    #[brw(magic(6_i32))]
+    #[brw(magic(6_u32))]
     ArmV6,
-    #[brw(magic(9_i32))]
+    #[brw(magic(9_u32))]
     ArmV7,
-    #[brw(magic(11_i32))]
+    #[brw(magic(11_u32))]
     ArmV7S,
-    #[brw(magic(12_i32))]
+    #[brw(magic(12_u32))]
     ArmV7K,
-    #[brw(magic(13_i32))]
+    #[brw(magic(13_u32))]
     ArmV8,
-    #[brw(magic(0_i32))]
+    #[brw(magic(0_u32))]
     Arm64All,
-    #[brw(magic(1_i32))]
+    #[brw(magic(1_u32))]
     Arm64V8,
-    #[brw(magic(2_i32))]
+    #[brw(magic(2_u32))]
     Arm64E,
-    Unknown(i32),
+    Unknown(u32),
 }
 
 #[binrw]
@@ -238,6 +237,17 @@ enum LoadCommand {
         #[bw(write_with = writer_cstring,args((cmd_size-str_offset) as usize,))]
         path: String,
     },
+    #[brw(magic = 0x0000000d_u32)]
+    IdDylib {
+        cmd_size: u32,
+        str_offset: u32,
+        time_stamp: u32,
+        current_version: u32,
+        compatibility_version: u32,
+        #[br(parse_with = parse_cstring, args((cmd_size-str_offset) as usize,))]
+        #[bw(write_with = writer_cstring,args((cmd_size-str_offset) as usize,))]
+        path: String,
+    },
     #[brw(magic = 0x0000000c_u32)]
     LoadDylib {
         cmd_size: u32,
@@ -248,6 +258,12 @@ enum LoadCommand {
         #[br(parse_with = parse_cstring, args((cmd_size-str_offset) as usize,))]
         #[bw(write_with = writer_cstring,args((cmd_size-str_offset) as usize,))]
         name: String,
+    },
+    #[brw(magic = 0x00000025_u32)]
+    VersionMinIphoneos {
+        cmd_size: u32,
+        version: u32,
+        reserved: u32,
     },
     #[brw(magic = 0x00000032_u32)]
     BundleVersion {
@@ -312,7 +328,8 @@ enum LoadCommand {
         file_offset: u32,
         file_size: u32,
     },
-    // Unknown {//todo 应该匹配所有Command，不应该进来这里
+    // Unknown {
+    //     //todo 应该匹配所有Command，不应该进来这里
     //     cmd: CmdType,
     //     #[bw(calc = (data.len() + 8) as u32)]
     //     cmd_size: u32,
@@ -354,24 +371,19 @@ fn map_cstring_bytes(str: &String) -> Vec<u8> {
     data
 }
 #[binrw]
+#[brw(is_big=big_endian,import(big_endian:bool))]
 #[derive(Debug)]
 pub struct MachHeader {
     magic: MachType, // mach magic 标识符，用来确定其属于 64位 还是 32位
-    #[br(seek_before = SeekFrom::Current(-4),map = |magic:MachType| matches!(magic,MachType::MachoCiGam|MachType::MachoCiGam64))]
-    #[bw(ignore)]
-    big_endian: bool,
     #[br(seek_before = SeekFrom::Current(-4),map = |magic:MachType| matches!(magic,MachType::MachoMagic64|MachType::MachoCiGam64))]
     #[bw(ignore)]
     bit_64: bool, //是否是64位的二进制文件
-
-    #[brw( args { big_endian: big_endian.clone() } )]
-    cpu_type: CpuType, //CPU 类型标识符，同通用二进制格式中的定义
+    // #[brw( args { big_endian: big_endian.clone() } )]
+    cpu_type: CpuType,       //CPU 类型标识符，同通用二进制格式中的定义
     cpu_subtype: CpuSubtype, //CPU 子类型标识符，同通用二级制格式中的定义
     file_type: FileType,     //文件类型，主要用来区分可执行文件、动态库、静态库等
-    #[br(is_big = big_endian )]
-    count_of_cmds: u32, //加载器中加载命令(Load commands)的数量
-    #[br(is_big = big_endian )]
-    size_of_cmds: u32, //加载器中加载命令的总字节大小
+    count_of_cmds: u32,      //加载器中加载命令(Load commands)的数量
+    size_of_cmds: u32,       //加载器中加载命令的总字节大小
     flags: u32,              // 标志位，主要用来表示是否是64位的二进制文件，是否是可执行文件等
     #[brw(if(bit_64.clone()))]
     reserved: Option<u32>, // 64 位的保留字段
@@ -380,7 +392,34 @@ pub struct MachHeader {
     #[br(args{inner:(big_endian,)})]
     commands: Vec<LoadCommand>,
 }
-
+#[binrw]
+#[derive(Debug)]
+pub struct FatHeader {
+    magic: MachType, // mach magic 标识符，用来确定其属于 64位 还是 32位
+    #[br(seek_before = SeekFrom::Current(-4),map = |magic:MachType| matches!(magic,MachType::FatCiGam|MachType::MachoCiGam|MachType::MachoCiGam64))]
+    #[bw(ignore)]
+    big_endian: bool,
+    #[br(temp)]
+    #[bw(calc = archs.len() as u32)]
+    number_of_architecture: u32,
+    #[br(count = number_of_architecture)]
+    #[br(args{inner:(big_endian,)})]
+    archs: Vec<FatArch>,
+}
+#[binrw]
+#[brw(import(big_endian:bool))]
+#[derive(Debug)]
+pub struct FatArch {
+    cpu_type: CpuType,
+    cpu_subtype: CpuSubtype,
+    offset: u32,
+    size: u32,
+    align: u32,
+    #[br(align_before = offset)]
+    #[bw(align_before = *offset)]
+    #[br(is_big=big_endian)]
+    mach: MachHeader,
+}
 #[binrw]
 struct SegmentCommand64 {
     pub segment_name: [u8; 16], /* segment name */
@@ -395,13 +434,42 @@ struct SegmentCommand64 {
 }
 #[cfg(test)]
 mod tests {
-    use binrw::{binrw, BinReaderExt, BinResult, BinWrite};
+    use crate::{FatHeader, MachHeader, MachType};
+    use binrw::{binrw, BinReaderExt, BinResult, BinWrite, Endian};
+    use std::fs;
+    use std::fs::File;
     use std::io::{Cursor, Read, SeekFrom};
-
     // #[binrw::parser]
     // fn bool_reader(reader: &mut dyn Read, is_big: bool) -> BinResult<bool> {
     //
     // }
+
+    #[test]
+    fn test_read_ios_dylib() {
+        let data = fs::read("./data/ios.dylib").unwrap();
+        println!("before length:{}", data.len());
+        let mut reader = Cursor::new(&data);
+        let magic: MachType = reader.read_le().unwrap();
+        let endian = if magic == MachType::FatCiGam || magic == MachType::MachoCiGam {
+            Endian::Big
+        } else {
+            Endian::Little
+        };
+        reader.set_position(0);
+        let fat_header: FatHeader = reader.read_type(endian).unwrap();
+        println!("magic : {:?}", fat_header);
+
+        let mut writer = Cursor::new(vec![]);
+        if endian == Endian::Big {
+            fat_header.write_be(&mut writer).unwrap();
+        } else {
+            fat_header.write_le(&mut writer).unwrap();
+        }
+        let mut file = File::create("./data/ios2.dylib").unwrap();
+        writer.set_position(0);
+        std::io::copy(&mut writer, &mut file).unwrap();
+        println!("after length: {:#?}", writer.get_ref().len());
+    }
 
     #[test]
     fn test_read() {
@@ -457,11 +525,13 @@ fn main() {
     let mut macho: MachHeader = reader.read_ne().unwrap();
     // macho.cpu_type = CpuType::X86_64;
 
+    println!("before length:{}", data.len());
     let mut writer = Cursor::new(vec![]);
     macho.write_le(&mut writer).unwrap();
     let mut file = File::create("./data/ios2").unwrap();
     writer.set_position(0);
     std::io::copy(&mut writer, &mut file).unwrap();
+    println!("after length:{}", writer.get_ref().len());
     //
     // let data = fs::read("./data/ios2").unwrap();
     // let mut reader = Cursor::new(&data);
