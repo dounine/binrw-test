@@ -113,8 +113,12 @@ enum CmdType {
 #[brw(is_big=big_endian,import(is_u64:bool,big_endian:bool))]
 #[derive(Debug)]
 struct Section<T: for<'a> BinRead<Args<'a> = ()> + for<'a> BinWrite<Args<'a> = ()>> {
-    section_name: [u8; 16],
-    segment_name: [u8; 16],
+    #[br(parse_with = parse_cstring, args(16,))]
+    #[bw(write_with = writer_cstring,args(16,))]
+    section_name: String,
+    #[br(parse_with = parse_cstring, args(16,))]
+    #[bw(write_with = writer_cstring,args(16,))]
+    segment_name: String,
     addr: T,
     size: T,
     offset: u32,
@@ -451,7 +455,7 @@ fn main() {
     let data = fs::read("./data/ios").unwrap();
     let mut reader = Cursor::new(&data);
     let mut macho: MachHeader = reader.read_ne().unwrap();
-    // macho.cpu_type = CpuType::ARM;
+    // macho.cpu_type = CpuType::X86_64;
 
     let mut writer = Cursor::new(vec![]);
     macho.write_le(&mut writer).unwrap();
