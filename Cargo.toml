@@ -12,3 +12,4 @@ debug = false
 
 [dependencies]
 binrw = "0.14.1"
+uuid = "1.11.0"

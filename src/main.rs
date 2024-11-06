@@ -256,15 +256,17 @@ enum LoadCommand {
         #[bw(write_with = writer_cstring,args((cmd_size-str_offset) as usize,))]
         name: String,
     },
-    // #[brw(magic = 0x0000001b_u32)]
-    // Uuid {
-    //     cmd_size: u32,
-    //     // #[br(parse_with = parse_cstring, args(cmd_size as usize -4,))]
-    //     // #[bw(ignore)]
-    //     // #[bw(write_with = writer_cstring,args(20,))]
-    //     // #[br(map = |v:&[u8;20]| String::from_utf8(v.to_vec()).unwrap())]
-    //     uuid: String,
-    // },
+    #[brw(magic = 0x0000001b_u32)]
+    Uuid {
+        cmd_size: u32,
+        // uuid: [u8; 16],
+        //     // #[br(parse_with = parse_cstring, args(cmd_size as usize -4,))]
+        //     // #[bw(ignore)]
+        //     // #[bw(write_with = writer_cstring,args(20,))]
+        #[br(map = |v:[u8;16]| uuid::Uuid::from_bytes(v))]
+        #[bw(map = |v:&uuid::Uuid| v.as_bytes().to_vec())]
+        uuid: uuid::Uuid,
+    },
     #[brw(magic = 0x0000002a_u32)]
     SourceVersion { cmd_size: u32, version: u64 },
     #[brw(magic = 0x0000000b_u32)]
@@ -332,7 +334,7 @@ fn writer_cstring(data: &String, size: usize) -> BinResult<()> {
     data.write(writer)?;
     Ok(())
 }
-fn map_cstring(data: &[u8; 16]) -> String {
+fn map_cstring(data: &[u8]) -> String {
     let c_char = data.as_ptr() as *const c_char;
     let c_str = unsafe { CStr::from_ptr(c_char) };
     c_str.to_string_lossy().to_string()
@@ -446,11 +448,11 @@ fn main() {
     let mut macho: MachHeader = reader.read_ne().unwrap();
     // macho.cpu_type = CpuType::ARM;
 
-    // let mut writer = Cursor::new(vec![]);
-    // macho.write_le(&mut writer).unwrap();
-    // let mut file = File::create("./data/ios2").unwrap();
-    // writer.set_position(0);
-    // std::io::copy(&mut writer, &mut file).unwrap();
+    let mut writer = Cursor::new(vec![]);
+    macho.write_le(&mut writer).unwrap();
+    let mut file = File::create("./data/ios2").unwrap();
+    writer.set_position(0);
+    std::io::copy(&mut writer, &mut file).unwrap();
     //
     // let data = fs::read("./data/ios2").unwrap();
     // let mut reader = Cursor::new(&data);
