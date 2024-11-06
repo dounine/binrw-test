@@ -110,7 +110,7 @@ enum CmdType {
     Unknown(u32),
 }
 #[binrw]
-#[brw(import(is_u64:bool))]
+#[brw(is_big=big_endian,import(is_u64:bool,big_endian:bool))]
 #[derive(Debug)]
 struct Section<T: for<'a> BinRead<Args<'a> = ()> + for<'a> BinWrite<Args<'a> = ()>> {
     section_name: [u8; 16],
@@ -126,6 +126,13 @@ struct Section<T: for<'a> BinRead<Args<'a> = ()> + for<'a> BinWrite<Args<'a> = (
     reserved2: u32,
     #[br(if(is_u64))]
     reserved3: Option<u32>,
+}
+#[binrw]
+#[brw(is_big=big_endian,import(big_endian:bool))]
+#[derive(Debug)]
+struct BuildToolVersion {
+    tool: u32,
+    version: u32,
 }
 #[binrw]
 #[brw(is_big=big_endian,import(big_endian:bool))]
@@ -148,7 +155,7 @@ enum LoadCommand {
         nsects: u32,
         flags: u32,
         #[br(count = nsects)]
-        #[br(args{inner:(false,)})]
+        #[br(args{inner:(false,big_endian,)})]
         sections: Vec<Section<u32>>,
     },
     #[brw(magic = 0x00000019_u32)]
@@ -168,7 +175,7 @@ enum LoadCommand {
         nsects: u32,
         flags: u32,
         #[br(count = nsects)]
-        #[br(args{inner:(true,)})]
+        #[br(args{inner:(true,big_endian,)})]
         sections: Vec<Section<u64>>,
     },
     #[brw(magic = 0x00000021_u32)]
@@ -244,9 +251,11 @@ enum LoadCommand {
         platform: u32,
         minimum_os_version: u32,
         bundle_sdk_version: u32,
+        #[br(temp)]
+        #[bw(calc = build_tool_versions.len() as u32)]
         number_of_tools_entries: u32,
-        tool: u32,
-        tool_version: u32,
+        #[br(count = number_of_tools_entries,args{inner:(big_endian,)})]
+        build_tool_versions: Vec<BuildToolVersion>,
     },
     #[brw(magic = 0x0000000e_u32)]
     LoadDyLinker {
@@ -259,10 +268,6 @@ enum LoadCommand {
     #[brw(magic = 0x0000001b_u32)]
     Uuid {
         cmd_size: u32,
-        // uuid: [u8; 16],
-        //     // #[br(parse_with = parse_cstring, args(cmd_size as usize -4,))]
-        //     // #[bw(ignore)]
-        //     // #[bw(write_with = writer_cstring,args(20,))]
         #[br(map = |v:[u8;16]| uuid::Uuid::from_bytes(v))]
         #[bw(map = |v:&uuid::Uuid| v.as_bytes().to_vec())]
         uuid: uuid::Uuid,
@@ -303,13 +308,13 @@ enum LoadCommand {
         file_offset: u32,
         file_size: u32,
     },
-    Unknown {
-        cmd: CmdType,
-        #[bw(calc = (data.len() + 8) as u32)]
-        cmd_size: u32,
-        #[br(count = cmd_size - 8)]
-        data: Vec<u8>,
-    },
+    // Unknown {//todo 应该匹配所有Command，不应该进来这里
+    //     cmd: CmdType,
+    //     #[bw(calc = (data.len() + 8) as u32)]
+    //     cmd_size: u32,
+    //     #[br(count = cmd_size - 8)]
+    //     data: Vec<u8>,
+    // },
 }
 
 #[binrw]
